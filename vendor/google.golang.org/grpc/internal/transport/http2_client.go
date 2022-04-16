@@ -162,6 +162,7 @@ func dial(ctx context.Context, fn func(context.Context, string) (net.Conn, error
 			}
 			return fn(ctx, "unix:"+address)
 		}
+		fmt.Print("created pipe connection\n")
 		return fn(ctx, address)
 	}
 	if !ok {
@@ -207,7 +208,9 @@ func newHTTP2Client(connectCtx, ctx context.Context, addr resolver.Address, opts
 	// address specific arbitrary data to reach custom dialers and credential handshakers.
 	connectCtx = icredentials.NewClientHandshakeInfoContext(connectCtx, credentials.ClientHandshakeInfo{Attributes: addr.Attributes})
 
+	fmt.Print("trying to connect\n")
 	conn, err := dial(connectCtx, opts.Dialer, addr, opts.UseProxy, opts.UserAgent)
+	fmt.Print("pipe connection successful\n")
 	if err != nil {
 		if opts.FailOnNonTempDialError {
 			return nil, connectionErrorf(isTemporary(err), err, "transport: error while dialing: %v", err)
