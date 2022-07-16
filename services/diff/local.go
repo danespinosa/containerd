@@ -27,6 +27,7 @@ import (
 	"github.com/containerd/containerd/mount"
 	"github.com/containerd/containerd/plugin"
 	"github.com/containerd/containerd/services"
+	"github.com/containerd/typeurl"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"google.golang.org/grpc"
@@ -102,7 +103,11 @@ func (l *local) Apply(ctx context.Context, er *diffapi.ApplyRequest, _ ...grpc.C
 
 	var opts []diff.ApplyOpt
 	if er.Payloads != nil {
-		opts = append(opts, diff.WithPayloads(er.Payloads))
+		payloads := make(map[string]typeurl.Any)
+		for k, v := range er.Payloads {
+			payloads[k] = v
+		}
+		opts = append(opts, diff.WithPayloads(payloads))
 	}
 
 	for _, differ := range l.differs {
@@ -172,7 +177,7 @@ func toDescriptor(d *types.Descriptor) ocispec.Descriptor {
 	return ocispec.Descriptor{
 		MediaType:   d.MediaType,
 		Digest:      digest.Digest(d.Digest),
-		Size:        d.Size_,
+		Size:        d.Size,
 		Annotations: d.Annotations,
 	}
 }
@@ -181,7 +186,7 @@ func fromDescriptor(d ocispec.Descriptor) *types.Descriptor {
 	return &types.Descriptor{
 		MediaType:   d.MediaType,
 		Digest:      d.Digest.String(),
-		Size_:       d.Size,
+		Size:        d.Size,
 		Annotations: d.Annotations,
 	}
 }

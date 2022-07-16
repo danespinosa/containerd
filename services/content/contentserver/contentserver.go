@@ -26,7 +26,8 @@ import (
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/log"
-	ptypes "github.com/gogo/protobuf/types"
+	"github.com/containerd/containerd/protobuf"
+	ptypes "github.com/containerd/containerd/protobuf/types"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"github.com/sirupsen/logrus"
@@ -37,6 +38,7 @@ import (
 
 type service struct {
 	store content.Store
+	api.UnimplementedContentServer
 }
 
 var bufPool = sync.Pool{
@@ -90,8 +92,8 @@ func (s *service) Update(ctx context.Context, req *api.UpdateRequest) (*api.Upda
 
 func (s *service) List(req *api.ListContentRequest, session api.Content_ListServer) error {
 	var (
-		buffer    []api.Info
-		sendBlock = func(block []api.Info) error {
+		buffer    []*api.Info
+		sendBlock = func(block []*api.Info) error {
 			// send last block
 			return session.Send(&api.ListContentResponse{
 				Info: block,
@@ -100,10 +102,10 @@ func (s *service) List(req *api.ListContentRequest, session api.Content_ListServ
 	)
 
 	if err := s.store.Walk(session.Context(), func(info content.Info) error {
-		buffer = append(buffer, api.Info{
+		buffer = append(buffer, &api.Info{
 			Digest:    info.Digest.String(),
-			Size_:     info.Size,
-			CreatedAt: info.CreatedAt,
+			Size:      info.Size,
+			CreatedAt: protobuf.ToTimestamp(info.CreatedAt),
 			Labels:    info.Labels,
 		})
 
@@ -165,7 +167,7 @@ func (s *service) Read(req *api.ReadContentRequest, session api.Content_ReadServ
 		offset = req.Offset
 		// size is read size, not the expected size of the blob (oi.Size), which the caller might not be aware of.
 		// offset+size can be larger than oi.Size.
-		size = req.Size_
+		size = req.Size
 
 		// TODO(stevvooe): Using the global buffer pool. At 32KB, it is probably
 		// little inefficient for work over a fast network. We can tune this later.
@@ -220,8 +222,8 @@ func (s *service) Status(ctx context.Context, req *api.StatusRequest) (*api.Stat
 
 	var resp api.StatusResponse
 	resp.Status = &api.Status{
-		StartedAt: status.StartedAt,
-		UpdatedAt: status.UpdatedAt,
+		StartedAt: protobuf.ToTimestamp(status.StartedAt),
+		UpdatedAt: protobuf.ToTimestamp(status.UpdatedAt),
 		Ref:       status.Ref,
 		Offset:    status.Offset,
 		Total:     status.Total,
@@ -239,9 +241,9 @@ func (s *service) ListStatuses(ctx context.Context, req *api.ListStatusesRequest
 
 	var resp api.ListStatusesResponse
 	for _, status := range statuses {
-		resp.Statuses = append(resp.Statuses, api.Status{
-			StartedAt: status.StartedAt,
-			UpdatedAt: status.UpdatedAt,
+		resp.Statuses = append(resp.Statuses, &api.Status{
+			StartedAt: protobuf.ToTimestamp(status.StartedAt),
+			UpdatedAt: protobuf.ToTimestamp(status.UpdatedAt),
 			Ref:       status.Ref,
 			Offset:    status.Offset,
 			Total:     status.Total,
@@ -375,8 +377,8 @@ func (s *service) Write(session api.Content_WriteServer) (err error) {
 		switch req.Action {
 		case api.WriteAction_STAT:
 			msg.Digest = wr.Digest().String()
-			msg.StartedAt = ws.StartedAt
-			msg.UpdatedAt = ws.UpdatedAt
+			msg.StartedAt = protobuf.ToTimestamp(ws.StartedAt)
+			msg.UpdatedAt = protobuf.ToTimestamp(ws.UpdatedAt)
 			msg.Total = total
 		case api.WriteAction_WRITE, api.WriteAction_COMMIT:
 			if req.Offset > 0 {
@@ -451,22 +453,22 @@ func (s *service) Abort(ctx context.Context, req *api.AbortRequest) (*ptypes.Emp
 	return &ptypes.Empty{}, nil
 }
 
-func infoToGRPC(info content.Info) api.Info {
-	return api.Info{
+func infoToGRPC(info content.Info) *api.Info {
+	return &api.Info{
 		Digest:    info.Digest.String(),
-		Size_:     info.Size,
-		CreatedAt: info.CreatedAt,
-		UpdatedAt: info.UpdatedAt,
+		Size:      info.Size,
+		CreatedAt: protobuf.ToTimestamp(info.CreatedAt),
+		UpdatedAt: protobuf.ToTimestamp(info.UpdatedAt),
 		Labels:    info.Labels,
 	}
 }
 
-func infoFromGRPC(info api.Info) content.Info {
+func infoFromGRPC(info *api.Info) content.Info {
 	return content.Info{
 		Digest:    digest.Digest(info.Digest),
-		Size:      info.Size_,
-		CreatedAt: info.CreatedAt,
-		UpdatedAt: info.UpdatedAt,
+		Size:      info.Size,
+		CreatedAt: protobuf.FromTimestamp(info.CreatedAt),
+		UpdatedAt: protobuf.FromTimestamp(info.UpdatedAt),
 		Labels:    info.Labels,
 	}
 }

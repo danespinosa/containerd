@@ -39,6 +39,7 @@ import (
 	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/runtime/v2/runc/options"
 	"github.com/containerd/containerd/snapshots"
+	"github.com/intel/goresctrl/pkg/blockio"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/sirupsen/logrus"
 	"github.com/urfave/cli"
@@ -100,12 +101,12 @@ func NewContainer(ctx gocontext.Context, client *containerd.Client, context *cli
 	)
 
 	if config {
-		cOpts = append(cOpts, containerd.WithContainerLabels(commands.LabelArgs(context.StringSlice("labels"))))
+		cOpts = append(cOpts, containerd.WithContainerLabels(commands.LabelArgs(context.StringSlice("label"))))
 		opts = append(opts, oci.WithSpecFromFile(context.String("config")))
 	} else {
 		var (
 			ref = context.Args().First()
-			//for container's id is Args[1]
+			// for container's id is Args[1]
 			args = context.Args()[2:]
 		)
 		opts = append(opts, oci.WithDefaultSpec(), oci.WithDefaultUnixDevices)
@@ -121,7 +122,7 @@ func NewContainer(ctx gocontext.Context, client *containerd.Client, context *cli
 				return nil, err
 			}
 			opts = append(opts, oci.WithRootFSPath(rootfs))
-			cOpts = append(cOpts, containerd.WithContainerLabels(commands.LabelArgs(context.StringSlice("labels"))))
+			cOpts = append(cOpts, containerd.WithContainerLabels(commands.LabelArgs(context.StringSlice("label"))))
 		} else {
 			snapshotter := context.String("snapshotter")
 			var image containerd.Image
@@ -329,8 +330,24 @@ func NewContainer(ctx gocontext.Context, client *containerd.Client, context *cli
 			})
 		}
 
+		if c := context.String("blockio-config-file"); c != "" {
+			if err := blockio.SetConfigFromFile(c, false); err != nil {
+				return nil, fmt.Errorf("blockio-config-file error: %w", err)
+			}
+		}
+
+		if c := context.String("blockio-class"); c != "" {
+			if linuxBlockIO, err := blockio.OciLinuxBlockIO(c); err == nil {
+				opts = append(opts, oci.WithBlockIO(linuxBlockIO))
+			} else {
+				return nil, fmt.Errorf("blockio-class error: %w", err)
+			}
+		}
 		if c := context.String("rdt-class"); c != "" {
 			opts = append(opts, oci.WithRdt(c, "", ""))
+		}
+		if hostname := context.String("hostname"); hostname != "" {
+			opts = append(opts, oci.WithHostname(hostname))
 		}
 	}
 

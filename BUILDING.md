@@ -122,14 +122,13 @@ Please refer to [RUNC.md](/docs/RUNC.md) for the currently supported version of 
 You can build static binaries by providing a few variables to `make`:
 
 ```sh
-make EXTRA_FLAGS="-buildmode pie" \
-	EXTRA_LDFLAGS='-linkmode external -extldflags "-fno-PIC -static"' \
-	BUILDTAGS="netgo osusergo static_build"
+make STATIC=1
 ```
 
 > *Note*:
 > - static build is discouraged
 > - static containerd binary does not support loading shared object plugins (`*.so`)
+> - static build binaries are not position-independent
 
 # Via Docker container
 
@@ -273,7 +272,7 @@ In addition to `go test`-based testing executed via the `Makefile` targets, the 
 With this tool you can stress a running containerd daemon for a specified period of time, selecting a concurrency level to generate stress against the daemon. The following command is an example of having five workers running for two hours against a default containerd gRPC socket address:
 
 ```sh
-containerd-stress -c 5 -t 120
+containerd-stress -c 5 -d 120m
 ```
 
 For more information on this tool's options please run `containerd-stress --help`.

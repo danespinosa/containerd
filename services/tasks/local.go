@@ -42,12 +42,13 @@ import (
 	"github.com/containerd/containerd/pkg/timeout"
 	"github.com/containerd/containerd/plugin"
 	"github.com/containerd/containerd/protobuf"
+	"github.com/containerd/containerd/protobuf/proto"
+	ptypes "github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/containerd/runtime"
 	"github.com/containerd/containerd/runtime/linux/runctypes"
 	"github.com/containerd/containerd/runtime/v2/runc/options"
 	"github.com/containerd/containerd/services"
 	"github.com/containerd/typeurl"
-	ptypes "github.com/gogo/protobuf/types"
 	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 	"google.golang.org/grpc"
@@ -66,6 +67,8 @@ const (
 
 // Config for the tasks service plugin
 type Config struct {
+	// BlockIOConfigFile specifies the path to blockio configuration file
+	BlockIOConfigFile string `toml:"blockio_config_file" json:"blockioConfigFile"`
 	// RdtConfigFile specifies the path to RDT configuration file
 	RdtConfigFile string `toml:"rdt_config_file" json:"rdtConfigFile"`
 }
@@ -138,6 +141,9 @@ func initFunc(ic *plugin.InitContext) (interface{}, error) {
 		l.monitor.Monitor(t, nil)
 	}
 
+	if err := initBlockIO(config.BlockIOConfigFile); err != nil {
+		log.G(ic.Context).WithError(err).Errorf("blockio initialization failed")
+	}
 	if err := initRdt(config.RdtConfigFile); err != nil {
 		log.G(ic.Context).WithError(err).Errorf("RDT initialization failed")
 	}
@@ -176,7 +182,7 @@ func (l *local) Create(ctx context.Context, r *api.CreateTaskRequest, _ ...grpc.
 		reader, err := l.store.ReaderAt(ctx, ocispec.Descriptor{
 			MediaType:   r.Checkpoint.MediaType,
 			Digest:      digest.Digest(r.Checkpoint.Digest),
-			Size:        r.Checkpoint.Size_,
+			Size:        r.Checkpoint.Size,
 			Annotations: r.Checkpoint.Annotations,
 		})
 		if err != nil {
@@ -200,6 +206,7 @@ func (l *local) Create(ctx context.Context, r *api.CreateTaskRequest, _ ...grpc.
 		Runtime:        container.Runtime.Name,
 		RuntimeOptions: container.Runtime.Options,
 		TaskOptions:    r.Options,
+		SandboxID:      container.SandboxID,
 	}
 	if r.RuntimePath != "" {
 		opts.Runtime = r.RuntimePath
@@ -297,7 +304,7 @@ func (l *local) Delete(ctx context.Context, r *api.DeleteTaskRequest, _ ...grpc.
 
 	return &api.DeleteResponse{
 		ExitStatus: exit.Status,
-		ExitedAt:   exit.Timestamp,
+		ExitedAt:   protobuf.ToTimestamp(exit.Timestamp),
 		Pid:        exit.Pid,
 	}, nil
 }
@@ -318,7 +325,7 @@ func (l *local) DeleteProcess(ctx context.Context, r *api.DeleteProcessRequest, 
 	return &api.DeleteResponse{
 		ID:         r.ExecID,
 		ExitStatus: exit.Status,
-		ExitedAt:   exit.Timestamp,
+		ExitedAt:   protobuf.ToTimestamp(exit.Timestamp),
 		Pid:        exit.Pid,
 	}, nil
 }
@@ -358,7 +365,7 @@ func getProcessState(ctx context.Context, p runtime.Process) (*task.Process, err
 		Stderr:     state.Stderr,
 		Terminal:   state.Terminal,
 		ExitStatus: state.ExitStatus,
-		ExitedAt:   state.ExitedAt,
+		ExitedAt:   protobuf.ToTimestamp(state.ExitedAt),
 	}, nil
 }
 
@@ -578,7 +585,8 @@ func (l *local) Checkpoint(ctx context.Context, r *api.CheckpointTaskRequest, _ 
 		return nil, err
 	}
 	// write the config to the content store
-	data, err := protobuf.FromAny(container.Spec).Marshal()
+	pbany := protobuf.FromAny(container.Spec)
+	data, err := proto.Marshal(pbany)
 	if err != nil {
 		return nil, err
 	}
@@ -639,7 +647,7 @@ func (l *local) Wait(ctx context.Context, r *api.WaitRequest, _ ...grpc.CallOpti
 	}
 	return &api.WaitResponse{
 		ExitStatus: exit.Status,
-		ExitedAt:   exit.Timestamp,
+		ExitedAt:   protobuf.ToTimestamp(exit.Timestamp),
 	}, nil
 }
 
@@ -668,7 +676,7 @@ func getTasksMetrics(ctx context.Context, filter filters.Filter, tasks []runtime
 			continue
 		}
 		r.Metrics = append(r.Metrics, &types.Metric{
-			Timestamp: collected,
+			Timestamp: protobuf.ToTimestamp(collected),
 			ID:        tk.ID(),
 			Data:      stats,
 		})
@@ -691,7 +699,7 @@ func (l *local) writeContent(ctx context.Context, mediaType, ref string, r io.Re
 	return &types.Descriptor{
 		MediaType:   mediaType,
 		Digest:      writer.Digest().String(),
-		Size_:       size,
+		Size:        size,
 		Annotations: make(map[string]string),
 	}, nil
 }

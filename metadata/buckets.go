@@ -44,10 +44,15 @@
 //
 // Below is the current database schema. This should be updated each time
 // the structure is changed in addition to adding a migration and incrementing
-// the database version. Note that `╘══*...*` refers to maps with arbitrary
-// keys.
-//  ├──version : <varint>                        - Latest version, see migrations
+// the database version.
+// Notes:
+//  * `╘══*...*` refers to maps with arbitrary keys
+//  * `version` is a key to a numeric value identifying the minor revisions
+//    of schema version
+//  * a namespace in a schema bucket cannot be named "version"
+//
 //  └──v1                                        - Schema version bucket
+//     ├──version : <varint>                     - Latest version, see migrations
 //     ╘══*namespace*
 //        ├──labels
 //        │  ╘══*key* : <string>                 - Label value
@@ -130,6 +135,7 @@ var (
 	bucketKeyObjectBlob       = []byte("blob")       // stores content links
 	bucketKeyObjectIngests    = []byte("ingests")    // stores ingest objects
 	bucketKeyObjectLeases     = []byte("leases")     // stores leases
+	bucketKeyObjectSandboxes  = []byte("sandboxes")  // stores sandboxes
 
 	bucketKeyDigest      = []byte("digest")
 	bucketKeyMediaType   = []byte("mediatype")
@@ -149,6 +155,7 @@ var (
 	bucketKeyExpected    = []byte("expected")
 	bucketKeyRef         = []byte("ref")
 	bucketKeyExpireAt    = []byte("expireat")
+	bucketKeySandboxID   = []byte("sandboxid")
 
 	deprecatedBucketKeyObjectIngest = []byte("ingest") // stores ingest links, deprecated in v1.2
 )
@@ -269,4 +276,20 @@ func createIngestBucket(tx *bolt.Tx, namespace, ref string) (*bolt.Bucket, error
 
 func getIngestBucket(tx *bolt.Tx, namespace, ref string) *bolt.Bucket {
 	return getBucket(tx, bucketKeyVersion, []byte(namespace), bucketKeyObjectContent, bucketKeyObjectIngests, []byte(ref))
+}
+
+func createSandboxBucket(tx *bolt.Tx, namespace string) (*bolt.Bucket, error) {
+	return createBucketIfNotExists(
+		tx,
+		[]byte(namespace),
+		bucketKeyObjectSandboxes,
+	)
+}
+
+func getSandboxBucket(tx *bolt.Tx, namespace string) *bolt.Bucket {
+	return getBucket(
+		tx,
+		[]byte(namespace),
+		bucketKeyObjectSandboxes,
+	)
 }

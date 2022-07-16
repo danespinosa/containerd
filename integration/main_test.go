@@ -194,8 +194,8 @@ func PodSandboxConfigWithCleanup(t *testing.T, name, ns string, opts ...PodSandb
 	return sb, sbConfig
 }
 
-// Set Windows HostProcess.
-func WithWindowsHostProcess(p *runtime.PodSandboxConfig) { //nolint:unused
+// Set Windows HostProcess on the pod.
+func WithWindowsHostProcessPod(p *runtime.PodSandboxConfig) { //nolint:unused
 	if p.Windows == nil {
 		p.Windows = &runtime.WindowsPodSandboxConfig{}
 	}
@@ -231,6 +231,16 @@ func WithResources(r *runtime.LinuxContainerResources) ContainerOpts { //nolint:
 	}
 }
 
+// Adds Windows container resource limits.
+func WithWindowsResources(r *runtime.WindowsContainerResources) ContainerOpts { //nolint:unused
+	return func(c *runtime.ContainerConfig) {
+		if c.Windows == nil {
+			c.Windows = &runtime.WindowsContainerConfig{}
+		}
+		c.Windows.Resources = r
+	}
+}
+
 func WithVolumeMount(hostPath, containerPath string) ContainerOpts {
 	return func(c *runtime.ContainerConfig) {
 		hostPath, _ = filepath.Abs(hostPath)
@@ -249,6 +259,18 @@ func WithWindowsUsername(username string) ContainerOpts { //nolint:unused
 			c.Windows.SecurityContext = &runtime.WindowsContainerSecurityContext{}
 		}
 		c.Windows.SecurityContext.RunAsUsername = username
+	}
+}
+
+func WithWindowsHostProcessContainer() ContainerOpts { //nolint:unused
+	return func(c *runtime.ContainerConfig) {
+		if c.Windows == nil {
+			c.Windows = &runtime.WindowsContainerConfig{}
+		}
+		if c.Windows.SecurityContext == nil {
+			c.Windows.SecurityContext = &runtime.WindowsContainerSecurityContext{}
+		}
+		c.Windows.SecurityContext.HostProcess = true
 	}
 }
 
@@ -386,8 +408,12 @@ func KillProcess(name string) error {
 }
 
 // KillPid kills the process by pid. kill is used.
-func KillPid(pid int) error { //nolint:unused
-	output, err := exec.Command("kill", strconv.Itoa(pid)).CombinedOutput()
+func KillPid(pid int) error {
+	command := "kill"
+	if goruntime.GOOS == "windows" {
+		command = "tskill"
+	}
+	output, err := exec.Command(command, strconv.Itoa(pid)).CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to kill %d - error: %v, output: %q", pid, err, output)
 	}

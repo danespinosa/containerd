@@ -27,8 +27,8 @@ import (
 	"github.com/containerd/containerd/events/exchange"
 	"github.com/containerd/containerd/plugin"
 	"github.com/containerd/containerd/protobuf"
+	ptypes "github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/ttrpc"
-	ptypes "github.com/gogo/protobuf/types"
 	"google.golang.org/grpc"
 )
 
@@ -52,6 +52,7 @@ func init() {
 type service struct {
 	ttService *ttrpcService
 	events    *exchange.Exchange
+	api.UnimplementedEventsServer
 }
 
 // NewService returns the GRPC events server
@@ -113,7 +114,7 @@ func (s *service) Subscribe(req *api.SubscribeRequest, srv api.Events_SubscribeS
 
 func toProto(env *events.Envelope) *api.Envelope {
 	return &api.Envelope{
-		Timestamp: env.Timestamp,
+		Timestamp: protobuf.ToTimestamp(env.Timestamp),
 		Namespace: env.Namespace,
 		Topic:     env.Topic,
 		Event:     protobuf.FromAny(env.Event),
@@ -122,7 +123,7 @@ func toProto(env *events.Envelope) *api.Envelope {
 
 func fromProto(env *api.Envelope) *events.Envelope {
 	return &events.Envelope{
-		Timestamp: env.Timestamp,
+		Timestamp: protobuf.FromTimestamp(env.Timestamp),
 		Namespace: env.Namespace,
 		Topic:     env.Topic,
 		Event:     env.Event,

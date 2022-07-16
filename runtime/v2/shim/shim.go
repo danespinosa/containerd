@@ -29,15 +29,16 @@ import (
 	"strings"
 	"time"
 
+	shimapi "github.com/containerd/containerd/api/runtime/task/v2"
 	"github.com/containerd/containerd/events"
 	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/pkg/shutdown"
 	"github.com/containerd/containerd/plugin"
-	shimapi "github.com/containerd/containerd/runtime/v2/task"
+	"github.com/containerd/containerd/protobuf"
+	"github.com/containerd/containerd/protobuf/proto"
 	"github.com/containerd/containerd/version"
 	"github.com/containerd/ttrpc"
-	"github.com/gogo/protobuf/proto"
 	"github.com/sirupsen/logrus"
 )
 
@@ -53,6 +54,7 @@ type StartOpts struct {
 	ContainerdBinary string
 	Address          string
 	TTRPCAddress     string
+	Debug            bool
 }
 
 type StopStatus struct {
@@ -218,7 +220,7 @@ func (stm shimToManager) Stop(ctx context.Context, id string) (StopStatus, error
 	return StopStatus{
 		Pid:        int(dr.Pid),
 		ExitStatus: int(dr.ExitStatus),
-		ExitedAt:   dr.ExitedAt,
+		ExitedAt:   protobuf.FromTimestamp(dr.ExitedAt),
 	}, nil
 }
 
@@ -314,7 +316,7 @@ func run(ctx context.Context, manager Manager, initFunc Init, name string, confi
 		data, err := proto.Marshal(&shimapi.DeleteResponse{
 			Pid:        uint32(ss.Pid),
 			ExitStatus: uint32(ss.ExitStatus),
-			ExitedAt:   ss.ExitedAt,
+			ExitedAt:   protobuf.ToTimestamp(ss.ExitedAt),
 		})
 		if err != nil {
 			return err
@@ -328,6 +330,7 @@ func run(ctx context.Context, manager Manager, initFunc Init, name string, confi
 			ContainerdBinary: containerdBinaryFlag,
 			Address:          addressFlag,
 			TTRPCAddress:     ttrpcAddress,
+			Debug:            debugFlag,
 		}
 
 		address, err := manager.Start(ctx, id, opts)

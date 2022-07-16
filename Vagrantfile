@@ -17,18 +17,24 @@
 
 # Vagrantfile for Fedora and EL
 Vagrant.configure("2") do |config|
-  config.vm.box = ENV["BOX"] || "fedora/35-cloud-base"
+  config.vm.box = ENV["BOX"] || "fedora/36-cloud-base"
   config.vm.box_version = ENV["BOX_VERSION"]
+
   memory = 4096
   cpus = 2
+  disk_size = 60
   config.vm.provider :virtualbox do |v|
     v.memory = memory
     v.cpus = cpus
+    v.disk :disk, size: "#{disk_size}GB", primary: true
   end
   config.vm.provider :libvirt do |v|
     v.memory = memory
     v.cpus = cpus
+    v.machine_virtual_size = disk_size
   end
+
+  config.vm.provision 'shell', path: 'script/resize-vagrant-root.sh'
 
   # Disabled by default. To run:
   #   vagrant up --provision-with=upgrade-packages
@@ -91,7 +97,7 @@ EOF
   config.vm.provision "install-golang", type: "shell", run: "once" do |sh|
     sh.upload_path = "/tmp/vagrant-install-golang"
     sh.env = {
-        'GO_VERSION': ENV['GO_VERSION'] || "1.18",
+        'GO_VERSION': ENV['GO_VERSION'] || "1.18.4",
     }
     sh.inline = <<~SHELL
         #!/usr/bin/env bash
@@ -101,6 +107,7 @@ EOF
 GOPATH=\\$HOME/go
 PATH=\\$GOPATH/bin:\\$PATH
 export GOPATH PATH
+git config --global --add safe.directory /vagrant
 EOF
     source /etc/profile.d/sh.local
     SHELL
@@ -264,7 +271,7 @@ EOF
         fi
         trap cleanup EXIT
         ctr version
-        critest --parallel=$(nproc) --report-dir="${REPORT_DIR}" --ginkgo.skip='HostIpc is true'
+        critest --parallel=$[$(nproc)+2] --ginkgo.skip='HostIpc is true' --report-dir="${REPORT_DIR}"
     SHELL
   end
 

@@ -23,7 +23,8 @@ import (
 	contentapi "github.com/containerd/containerd/api/services/content/v1"
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/errdefs"
-	protobuftypes "github.com/gogo/protobuf/types"
+	"github.com/containerd/containerd/protobuf"
+	protobuftypes "github.com/containerd/containerd/protobuf/types"
 	digest "github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
 )
@@ -115,8 +116,8 @@ func (pcs *proxyContentStore) Status(ctx context.Context, ref string) (content.S
 	status := resp.Status
 	return content.Status{
 		Ref:       status.Ref,
-		StartedAt: status.StartedAt,
-		UpdatedAt: status.UpdatedAt,
+		StartedAt: protobuf.FromTimestamp(status.StartedAt),
+		UpdatedAt: protobuf.FromTimestamp(status.UpdatedAt),
 		Offset:    status.Offset,
 		Total:     status.Total,
 		Expected:  digest.Digest(status.Expected),
@@ -125,7 +126,7 @@ func (pcs *proxyContentStore) Status(ctx context.Context, ref string) (content.S
 
 func (pcs *proxyContentStore) Update(ctx context.Context, info content.Info, fieldpaths ...string) (content.Info, error) {
 	resp, err := pcs.client.Update(ctx, &contentapi.UpdateRequest{
-		Info: infoToGRPC(info),
+		Info: infoToGRPC(&info),
 		UpdateMask: &protobuftypes.FieldMask{
 			Paths: fieldpaths,
 		},
@@ -148,8 +149,8 @@ func (pcs *proxyContentStore) ListStatuses(ctx context.Context, filters ...strin
 	for _, status := range resp.Statuses {
 		statuses = append(statuses, content.Status{
 			Ref:       status.Ref,
-			StartedAt: status.StartedAt,
-			UpdatedAt: status.UpdatedAt,
+			StartedAt: protobuf.FromTimestamp(status.StartedAt),
+			UpdatedAt: protobuf.FromTimestamp(status.UpdatedAt),
 			Offset:    status.Offset,
 			Total:     status.Total,
 			Expected:  digest.Digest(status.Expected),
@@ -213,22 +214,22 @@ func (pcs *proxyContentStore) negotiate(ctx context.Context, ref string, size in
 	return wrclient, resp.Offset, nil
 }
 
-func infoToGRPC(info content.Info) contentapi.Info {
-	return contentapi.Info{
+func infoToGRPC(info *content.Info) *contentapi.Info {
+	return &contentapi.Info{
 		Digest:    info.Digest.String(),
-		Size_:     info.Size,
-		CreatedAt: info.CreatedAt,
-		UpdatedAt: info.UpdatedAt,
+		Size:      info.Size,
+		CreatedAt: protobuf.ToTimestamp(info.CreatedAt),
+		UpdatedAt: protobuf.ToTimestamp(info.UpdatedAt),
 		Labels:    info.Labels,
 	}
 }
 
-func infoFromGRPC(info contentapi.Info) content.Info {
+func infoFromGRPC(info *contentapi.Info) content.Info {
 	return content.Info{
 		Digest:    digest.Digest(info.Digest),
-		Size:      info.Size_,
-		CreatedAt: info.CreatedAt,
-		UpdatedAt: info.UpdatedAt,
+		Size:      info.Size,
+		CreatedAt: protobuf.FromTimestamp(info.CreatedAt),
+		UpdatedAt: protobuf.FromTimestamp(info.UpdatedAt),
 		Labels:    info.Labels,
 	}
 }

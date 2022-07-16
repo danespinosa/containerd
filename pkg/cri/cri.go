@@ -19,6 +19,7 @@ package cri
 import (
 	"flag"
 	"fmt"
+	"os"
 	"path/filepath"
 
 	"github.com/containerd/containerd"
@@ -31,6 +32,7 @@ import (
 	"github.com/containerd/containerd/content"
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/log"
+	"github.com/containerd/containerd/pkg/cri/sbserver"
 	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/plugin"
 	"github.com/containerd/containerd/services"
@@ -97,7 +99,14 @@ func initCRIService(ic *plugin.InitContext) (interface{}, error) {
 		return nil, fmt.Errorf("failed to create containerd client: %w", err)
 	}
 
-	s, err := server.NewCRIService(c, client)
+	var s server.CRIService
+	if os.Getenv("ENABLE_CRI_SANDBOXES") != "" {
+		log.G(ctx).Info("using experimental CRI Sandbox server")
+		s, err = sbserver.NewCRIService(c, client)
+	} else {
+		log.G(ctx).Info("using legacy CRI server")
+		s, err = server.NewCRIService(c, client)
+	}
 	if err != nil {
 		return nil, fmt.Errorf("failed to create CRI service: %w", err)
 	}
@@ -113,18 +122,25 @@ func initCRIService(ic *plugin.InitContext) (interface{}, error) {
 
 // getServicesOpts get service options from plugin context.
 func getServicesOpts(ic *plugin.InitContext) ([]containerd.ServicesOpt, error) {
+	var opts []containerd.ServicesOpt
+	for t, fn := range map[plugin.Type]func(interface{}) containerd.ServicesOpt{
+		plugin.EventPlugin: func(i interface{}) containerd.ServicesOpt {
+			return containerd.WithEventService(i.(containerd.EventService))
+		},
+		plugin.LeasePlugin: func(i interface{}) containerd.ServicesOpt {
+			return containerd.WithLeasesService(i.(leases.Manager))
+		},
+	} {
+		i, err := ic.Get(t)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get %q plugin: %w", t, err)
+		}
+		opts = append(opts, fn(i))
+	}
+
 	plugins, err := ic.GetByType(plugin.ServicePlugin)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get service plugin: %w", err)
-	}
-
-	ep, err := ic.Get(plugin.EventPlugin)
-	if err != nil {
-		return nil, fmt.Errorf("failed to get event plugin: %w", err)
-	}
-
-	opts := []containerd.ServicesOpt{
-		containerd.WithEventService(ep.(containerd.EventService)),
 	}
 	for s, fn := range map[string]func(interface{}) containerd.ServicesOpt{
 		services.ContentService: func(s interface{}) containerd.ServicesOpt {
@@ -147,9 +163,6 @@ func getServicesOpts(ic *plugin.InitContext) ([]containerd.ServicesOpt, error) {
 		},
 		services.NamespacesService: func(s interface{}) containerd.ServicesOpt {
 			return containerd.WithNamespaceClient(s.(namespaces.NamespacesClient))
-		},
-		services.LeasesService: func(s interface{}) containerd.ServicesOpt {
-			return containerd.WithLeasesService(s.(leases.Manager))
 		},
 		services.IntrospectionService: func(s interface{}) containerd.ServicesOpt {
 			return containerd.WithIntrospectionClient(s.(introspectionapi.IntrospectionClient))

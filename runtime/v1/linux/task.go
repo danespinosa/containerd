@@ -32,11 +32,11 @@ import (
 	"github.com/containerd/containerd/identifiers"
 	"github.com/containerd/containerd/log"
 	"github.com/containerd/containerd/protobuf"
+	"github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/containerd/runtime"
 	"github.com/containerd/containerd/runtime/v1/shim/client"
 	"github.com/containerd/containerd/runtime/v1/shim/v1"
 	"github.com/containerd/ttrpc"
-	"github.com/gogo/protobuf/types"
 )
 
 // Task on a linux based system
@@ -117,7 +117,7 @@ func (t *Task) Delete(ctx context.Context) (*runtime.Exit, error) {
 	})
 	return &runtime.Exit{
 		Status:    rsp.ExitStatus,
-		Timestamp: rsp.ExitedAt,
+		Timestamp: protobuf.FromTimestamp(rsp.ExitedAt),
 		Pid:       rsp.Pid,
 	}, nil
 }
@@ -173,7 +173,7 @@ func (t *Task) State(ctx context.Context) (runtime.State, error) {
 		Stderr:     response.Stderr,
 		Terminal:   response.Terminal,
 		ExitStatus: response.ExitStatus,
-		ExitedAt:   response.ExitedAt,
+		ExitedAt:   protobuf.FromTimestamp(response.ExitedAt),
 	}, nil
 }
 
@@ -348,7 +348,7 @@ func (t *Task) Wait(ctx context.Context) (*runtime.Exit, error) {
 		return nil, err
 	}
 	return &runtime.Exit{
-		Timestamp: r.ExitedAt,
+		Timestamp: protobuf.FromTimestamp(r.ExitedAt),
 		Status:    r.ExitStatus,
 	}, nil
 }

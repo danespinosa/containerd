@@ -21,9 +21,9 @@ import (
 	"time"
 
 	"github.com/containerd/containerd/protobuf"
+	"github.com/containerd/containerd/protobuf/proto"
+	"github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/typeurl"
-	"github.com/gogo/protobuf/proto"
-	"github.com/gogo/protobuf/types"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -213,11 +213,11 @@ func WriteAny(bkt *bolt.Bucket, name []byte, any typeurl.Any) error {
 
 	data, err := proto.Marshal(pbany)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to marshal: %w", err)
 	}
 
 	if err := bkt.Put(name, data); err != nil {
-		return err
+		return fmt.Errorf("put failed: %w", err)
 	}
 
 	return nil

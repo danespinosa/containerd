@@ -37,7 +37,7 @@ var (
 		},
 	}
 
-	// SnapshotterLabels are cli flags specifying labels which will be add to the new snapshot for container.
+	// SnapshotterLabels are cli flags specifying labels which will be added to the new snapshot for container.
 	SnapshotterLabels = cli.StringSliceFlag{
 		Name:  "snapshotter-label",
 		Usage: "labels added to the new snapshot for this container.",
@@ -190,8 +190,20 @@ var (
 			Usage: "enable AppArmor with an existing custom profile",
 		},
 		cli.StringFlag{
+			Name:  "blockio-config-file",
+			Usage: "file path to blockio class definitions. By default class definitions are not loaded.",
+		},
+		cli.StringFlag{
+			Name:  "blockio-class",
+			Usage: "name of the blockio class to associate the container with",
+		},
+		cli.StringFlag{
 			Name:  "rdt-class",
 			Usage: "name of the RDT class to associate the container with. Specifies a Class of Service (CLOS) for cache and memory bandwidth management.",
+		},
+		cli.StringFlag{
+			Name:  "hostname",
+			Usage: "set the container's host name",
 		},
 	}
 )

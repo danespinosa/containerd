@@ -30,9 +30,9 @@ import (
 	"github.com/containerd/containerd/labels"
 	"github.com/containerd/containerd/metadata/boltutil"
 	"github.com/containerd/containerd/namespaces"
+	"github.com/containerd/containerd/protobuf/proto"
+	"github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/typeurl"
-	"github.com/gogo/protobuf/proto"
-	"github.com/gogo/protobuf/types"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -359,6 +359,8 @@ func readContainer(container *containers.Container, bkt *bolt.Bucket) error {
 			}
 
 			container.Extensions = extensions
+		case string(bucketKeySandboxID):
+			container.SandboxID = string(v)
 		}
 
 		return nil
@@ -404,6 +406,10 @@ func writeContainer(bkt *bolt.Bucket, container *containers.Container) error {
 	}
 
 	if err := boltutil.WriteAny(rbkt, bucketKeyOptions, container.Runtime.Options); err != nil {
+		return err
+	}
+
+	if err := bkt.Put(bucketKeySandboxID, []byte(container.SandboxID)); err != nil {
 		return err
 	}
 

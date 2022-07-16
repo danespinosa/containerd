@@ -137,7 +137,7 @@ version = 2
   selinux_category_range = 1024
 
   # sandbox_image is the image used by sandbox container.
-  sandbox_image = "k8s.gcr.io/pause:3.6"
+  sandbox_image = "k8s.gcr.io/pause:3.7"
 
   # stats_collect_period is the period (in seconds) of snapshots stats collection.
   stats_collect_period = 10
@@ -218,17 +218,18 @@ version = 2
   enable_unprivileged_icmp = false
 
   # enable_cdi enables support of the Container Device Interface (CDI)
-	# For more details about CDI and the syntax of CDI Spec files please refer to
-	# https://github.com/container-orchestrated-devices/container-device-interface.
-	enable_cdi = false
+  # For more details about CDI and the syntax of CDI Spec files please refer to
+  # https://github.com/container-orchestrated-devices/container-device-interface.
+  enable_cdi = false
 
   # cdi_spec_dirs is the list of directories to scan for CDI spec files
-	cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
+  cdi_spec_dirs = ["/etc/cdi", "/var/run/cdi"]
 
   # 'plugins."io.containerd.grpc.v1.cri".containerd' contains config related to containerd
   [plugins."io.containerd.grpc.v1.cri".containerd]
 
-    # snapshotter is the snapshotter used by containerd.
+    # snapshotter is the default snapshotter used by containerd
+    # for all runtimes, if not overridden by an experimental runtime's snapshotter config.
     snapshotter = "overlayfs"
 
     # no_pivot disables pivot-root (linux only), required when running a container in a RamDisk with runc.
@@ -247,6 +248,14 @@ version = 2
 
     # default_runtime_name is the default runtime name to use.
     default_runtime_name = "runc"
+
+    # ignore_blockio_not_enabled_errors disables blockio related
+    # errors when blockio support has not been enabled. By default,
+    # trying to set the blockio class of a container via annotations
+    # produces an error if blockio hasn't been enabled.  This config
+    # option practically enables a "soft" mode for blockio where these
+    # errors are ignored and the container gets no blockio class.
+    ignore_blockio_not_enabled_errors = false
 
     # ignore_rdt_not_enabled_errors disables RDT related errors when RDT
     # support has not been enabled. Intel RDT is a technology for cache and
@@ -294,6 +303,14 @@ version = 2
       # i.e pass host devices through to privileged containers.
       privileged_without_host_devices = false
 
+      # privileged_without_host_devices_all_devices_allowed allows the allowlisting of all devices when
+      # privileged_without_host_devices is enabled.
+      # In plain privileged mode all host device nodes are added to the container's spec and all devices
+      # are put in the container's device allowlist. This flags is for the modification of the privileged_without_host_devices
+      # option so that even when no host devices are implicitly added to the container, all devices allowlisting is still enabled.
+      # Requires privileged_without_host_devices to be enabled. Defaults to false.
+      privileged_without_host_devices_all_devices_allowed = false
+
       # base_runtime_spec is a file path to a JSON file with the OCI spec that will be used as the base spec that all
       # container's are created from.
       # Use containerd's `ctr oci spec > /etc/containerd/cri-base.json` to output initial spec file.
@@ -312,6 +329,11 @@ version = 2
       # interpreted as no limit is desired and will result in all CNI plugin
       # config files being loaded from the CNI config directory.
       cni_max_conf_num = 1
+
+      # snapshotter overrides the global default snapshotter to a runtime specific value.
+      # Please be aware that overriding the default snapshotter on a runtime basis is currently an experimental feature.
+      # See https://github.com/containerd/containerd/issues/6657 for context.
+      snapshotter = ""
 
       # 'plugins."io.containerd.grpc.v1.cri".containerd.runtimes.runc.options' is options specific to
       # "io.containerd.runc.v1" and "io.containerd.runc.v2". Its corresponding options type is:

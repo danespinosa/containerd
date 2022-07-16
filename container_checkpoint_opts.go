@@ -29,6 +29,7 @@ import (
 	"github.com/containerd/containerd/images"
 	"github.com/containerd/containerd/platforms"
 	"github.com/containerd/containerd/protobuf"
+	"github.com/containerd/containerd/protobuf/proto"
 	"github.com/containerd/containerd/rootfs"
 	"github.com/containerd/containerd/runtime/v2/runc/options"
 	"github.com/opencontainers/go-digest"
@@ -72,14 +73,14 @@ func WithCheckpointTask(ctx context.Context, client *Client, c *containers.Conta
 		platformSpec := platforms.DefaultSpec()
 		index.Manifests = append(index.Manifests, imagespec.Descriptor{
 			MediaType:   d.MediaType,
-			Size:        d.Size_,
+			Size:        d.Size,
 			Digest:      digest.Digest(d.Digest),
 			Platform:    &platformSpec,
 			Annotations: d.Annotations,
 		})
 	}
 	// save copts
-	data, err := any.Marshal()
+	data, err := proto.Marshal(any)
 	if err != nil {
 		return err
 	}
@@ -99,7 +100,8 @@ func WithCheckpointTask(ctx context.Context, client *Client, c *containers.Conta
 // WithCheckpointRuntime includes the container runtime info
 func WithCheckpointRuntime(ctx context.Context, client *Client, c *containers.Container, index *imagespec.Index, copts *options.CheckpointOptions) error {
 	if c.Runtime.Options != nil && c.Runtime.Options.GetValue() != nil {
-		data, err := protobuf.FromAny(c.Runtime.Options).Marshal()
+		any := protobuf.FromAny(c.Runtime.Options)
+		data, err := proto.Marshal(any)
 		if err != nil {
 			return err
 		}

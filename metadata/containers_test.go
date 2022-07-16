@@ -21,7 +21,6 @@ import (
 	"errors"
 	"fmt"
 	"path/filepath"
-	"reflect"
 	"testing"
 	"time"
 
@@ -31,11 +30,12 @@ import (
 	"github.com/containerd/containerd/log/logtest"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/protobuf"
+	"github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/typeurl"
-	"github.com/gogo/protobuf/types"
 	"github.com/google/go-cmp/cmp"
 	"github.com/opencontainers/runtime-spec/specs-go"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -44,16 +44,11 @@ func init() {
 }
 
 func TestContainersList(t *testing.T) {
-	ctx, db, cancel := testEnv(t)
-	defer cancel()
-
+	ctx, db := testEnv(t)
 	store := NewContainerStore(NewDB(db, nil, nil))
-
 	spec := &specs.Spec{}
 	encoded, err := protobuf.MarshalAnyToProto(spec)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	testset := map[string]*containers.Container{}
 	for i := 0; i < 4; i++ {
@@ -176,22 +171,18 @@ func TestContainersList(t *testing.T) {
 
 // TestContainersUpdate ensures that updates are taken in an expected manner.
 func TestContainersCreateUpdateDelete(t *testing.T) {
-	ctx, db, cancel := testEnv(t)
-	defer cancel()
+	var (
+		ctx, db = testEnv(t)
+		store   = NewContainerStore(NewDB(db, nil, nil))
+		spec    = &specs.Spec{}
+	)
 
-	store := NewContainerStore(NewDB(db, nil, nil))
-
-	spec := &specs.Spec{}
 	encoded, err := protobuf.MarshalAnyToProto(spec)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	spec.Annotations = map[string]string{"updated": "true"}
 	encodedUpdated, err := protobuf.MarshalAnyToProto(spec)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	for _, testcase := range []struct {
 		name       string
@@ -705,43 +696,23 @@ func checkContainerTimestamps(t *testing.T, c *containers.Container, now time.Ti
 	}
 }
 
-// isNil returns true if the given parameter is nil or typed nil.
-func isNil(x interface{}) bool {
-	if x == nil {
-		return true
-	}
-	v := reflect.ValueOf(x)
-	return v.Kind() == reflect.Ptr && v.IsNil()
-}
-
 func checkContainersEqual(t *testing.T, a, b *containers.Container, format string, args ...interface{}) {
-	// Ignore the difference of nil and typed nil.
-	opt := cmp.FilterValues(
-		func(x, y interface{}) bool {
-			return isNil(x) && isNil(y)
-		},
-		cmp.Comparer(func(_, _ interface{}) bool {
-			return true
-		}),
-	)
-
-	assert.True(t, cmp.Equal(a, b, opt))
+	assert.True(t, cmp.Equal(a, b, compareNil, compareAny))
 }
 
-func testEnv(t *testing.T) (context.Context, *bolt.DB, func()) {
+func testEnv(t *testing.T) (context.Context, *bolt.DB) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ctx = namespaces.WithNamespace(ctx, "testing")
 	ctx = logtest.WithT(ctx, t)
-
 	dirname := t.TempDir()
 
 	db, err := bolt.Open(filepath.Join(dirname, "meta.db"), 0644, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
-	return ctx, db, func() {
-		db.Close()
+	t.Cleanup(func() {
+		assert.NoError(t, db.Close())
 		cancel()
-	}
+	})
+
+	return ctx, db
 }

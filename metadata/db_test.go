@@ -38,11 +38,13 @@ import (
 	"github.com/containerd/containerd/leases"
 	"github.com/containerd/containerd/log/logtest"
 	"github.com/containerd/containerd/namespaces"
+	"github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/containerd/snapshots"
 	"github.com/containerd/containerd/snapshots/native"
-	"github.com/gogo/protobuf/types"
-	digest "github.com/opencontainers/go-digest"
+	"github.com/opencontainers/go-digest"
 	ocispec "github.com/opencontainers/image-spec/specs-go/v1"
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 	bolt "go.etcd.io/bbolt"
 )
 
@@ -61,7 +63,7 @@ func withSnapshotter(name string, fn func(string) (snapshots.Snapshotter, error)
 	}
 }
 
-func testDB(t *testing.T, opt ...testOpt) (context.Context, *DB, func()) {
+func testDB(t *testing.T, opt ...testOpt) (context.Context, *DB) {
 	ctx, cancel := context.WithCancel(context.Background())
 	ctx = namespaces.WithNamespace(ctx, "testing")
 	ctx = logtest.WithT(ctx, t)
@@ -75,9 +77,7 @@ func testDB(t *testing.T, opt ...testOpt) (context.Context, *DB, func()) {
 	dirname := t.TempDir()
 
 	snapshotter, err := native.NewSnapshotter(filepath.Join(dirname, "native"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	snapshotters := map[string]snapshots.Snapshotter{
 		"native": snapshotter,
@@ -92,41 +92,30 @@ func testDB(t *testing.T, opt ...testOpt) (context.Context, *DB, func()) {
 	}
 
 	cs, err := local.NewStore(filepath.Join(dirname, "content"))
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	bdb, err := bolt.Open(filepath.Join(dirname, "metadata.db"), 0644, nil)
-	if err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, err)
 
 	db := NewDB(bdb, cs, snapshotters)
-	if err := db.Init(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, db.Init(ctx))
 
-	return ctx, db, func() {
-		bdb.Close()
+	t.Cleanup(func() {
+		assert.NoError(t, bdb.Close())
 		cancel()
-	}
+	})
+
+	return ctx, db
 }
 
 func TestInit(t *testing.T) {
-	ctx, db, cancel := testEnv(t)
-	defer cancel()
+	ctx, db := testEnv(t)
 
-	if err := NewDB(db, nil, nil).Init(ctx); err != nil {
-		t.Fatal(err)
-	}
+	require.NoError(t, NewDB(db, nil, nil).Init(ctx))
 
 	version, err := readDBVersion(db, bucketKeyVersion)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if version != dbVersion {
-		t.Fatalf("Unexpected version %d, expected %d", version, dbVersion)
-	}
+	require.NoError(t, err)
+	assert.EqualValues(t, version, dbVersion, "unexpected version %d, expected %d", version, dbVersion)
 }
 
 func TestMigrations(t *testing.T) {
@@ -316,8 +305,7 @@ func TestMigrations(t *testing.T) {
 
 func runMigrationTest(i int, init, check func(*bolt.Tx) error) func(t *testing.T) {
 	return func(t *testing.T) {
-		_, db, cancel := testEnv(t)
-		defer cancel()
+		_, db := testEnv(t)
 
 		if err := db.Update(init); err != nil {
 			t.Fatal(err)
@@ -406,9 +394,45 @@ func TestMetadataCollector(t *testing.T) {
 					Type: "snapshots/native",
 				},
 			}, false, "containerd.io/gc.flat", time.Now().String()),
+
+			// Test Collectible Resource
+			blob(bytesFor(11), false, "containerd.io/gc.ref.test", "test1"),
+			blob(bytesFor(12), true, "containerd.io/gc.ref.test", "test2"),
+			lease("lease-3", []leases.Resource{
+				{
+					ID:   digestFor(11).String(),
+					Type: "content",
+				},
+			}, false),
 		}
-		remaining []gc.Node
+
+		testResource = gc.ResourceType(0x10)
+
+		remaining = []gc.Node{
+			gcnode(testResource, "test", "test1"),
+			gcnode(testResource, "test", "test3"),
+			gcnode(testResource, "test", "test4"),
+		}
+
+		collector = &testCollector{
+			all: []gc.Node{
+				gcnode(testResource, "random", "test1"),
+				gcnode(testResource, "test", "test1"),
+				gcnode(testResource, "test", "test2"),
+				gcnode(testResource, "test", "test3"),
+				gcnode(testResource, "test", "test4"),
+			},
+			active: []gc.Node{
+				gcnode(testResource, "test", "test4"),
+			},
+			leased: map[string][]gc.Node{
+				"lease-3": {
+					gcnode(testResource, "test", "test3"),
+				},
+			},
+		}
 	)
+	mdb.RegisterCollectibleResource(testResource, collector)
 
 	if err := mdb.Update(func(tx *bolt.Tx) error {
 		for _, obj := range objects {
@@ -436,7 +460,8 @@ func TestMetadataCollector(t *testing.T) {
 			actual = append(actual, node)
 			return nil
 		}
-		return scanAll(ctx, tx, scanFn)
+		cc := startGCContext(ctx, mdb.collectors)
+		return cc.scanAll(ctx, tx, scanFn)
 	}); err != nil {
 		t.Fatal(err)
 	}

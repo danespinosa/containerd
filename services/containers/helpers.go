@@ -20,12 +20,12 @@ import (
 	api "github.com/containerd/containerd/api/services/containers/v1"
 	"github.com/containerd/containerd/containers"
 	"github.com/containerd/containerd/protobuf"
+	"github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/typeurl"
-	"github.com/gogo/protobuf/types"
 )
 
-func containersToProto(containers []containers.Container) []api.Container {
-	var containerspb []api.Container
+func containersToProto(containers []containers.Container) []*api.Container {
+	var containerspb []*api.Container
 
 	for _, image := range containers {
 		image := image
@@ -35,12 +35,12 @@ func containersToProto(containers []containers.Container) []api.Container {
 	return containerspb
 }
 
-func containerToProto(container *containers.Container) api.Container {
-	extensions := make(map[string]types.Any)
+func containerToProto(container *containers.Container) *api.Container {
+	extensions := make(map[string]*types.Any)
 	for k, v := range container.Extensions {
-		extensions[k] = *protobuf.FromAny(v)
+		extensions[k] = protobuf.FromAny(v)
 	}
-	return api.Container{
+	return &api.Container{
 		ID:     container.ID,
 		Labels: container.Labels,
 		Image:  container.Image,
@@ -51,9 +51,10 @@ func containerToProto(container *containers.Container) api.Container {
 		Spec:        protobuf.FromAny(container.Spec),
 		Snapshotter: container.Snapshotter,
 		SnapshotKey: container.SnapshotKey,
-		CreatedAt:   container.CreatedAt,
-		UpdatedAt:   container.UpdatedAt,
+		CreatedAt:   protobuf.ToTimestamp(container.CreatedAt),
+		UpdatedAt:   protobuf.ToTimestamp(container.UpdatedAt),
 		Extensions:  extensions,
+		Sandbox:     container.SandboxID,
 	}
 }
 
@@ -68,7 +69,7 @@ func containerFromProto(containerpb *api.Container) containers.Container {
 	extensions := make(map[string]typeurl.Any)
 	for k, v := range containerpb.Extensions {
 		v := v
-		extensions[k] = &v
+		extensions[k] = v
 	}
 	return containers.Container{
 		ID:          containerpb.ID,
@@ -79,5 +80,6 @@ func containerFromProto(containerpb *api.Container) containers.Container {
 		Snapshotter: containerpb.Snapshotter,
 		SnapshotKey: containerpb.SnapshotKey,
 		Extensions:  extensions,
+		SandboxID:   containerpb.Sandbox,
 	}
 }

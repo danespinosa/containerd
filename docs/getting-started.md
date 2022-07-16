@@ -105,6 +105,31 @@ The `containerd.io` package contains runc too, but does not contain CNI plugins.
 
 To install containerd and its dependencies from the source, see [`BUILDING.md`](/BUILDING.md).
 
+## Installing containerd on Windows
+
+From a PowerShell session run the following commands:
+
+```PowerShell
+# Download and extract desired containerd Windows binaries
+$Version="1.6.4"
+curl.exe -L https://github.com/containerd/containerd/releases/download/v$Version/containerd-$Version-windows-amd64.tar.gz -o containerd-windows-amd64.tar.gz
+tar.exe xvf .\containerd-windows-amd64.tar.gz
+
+# Copy and configure
+Copy-Item -Path ".\bin\" -Destination "$Env:ProgramFiles\containerd" -Recurse -Force
+cd $Env:ProgramFiles\containerd\
+.\containerd.exe config default | Out-File config.toml -Encoding ascii
+
+# Review the configuration. Depending on setup you may want to adjust:
+# - the sandbox_image (Kubernetes pause image)
+# - cni bin_dir and conf_dir locations
+Get-Content config.toml
+
+# Register and start service
+.\containerd.exe --register-service
+Start-Service containerd
+```
+
 ## Interacting with containerd via CLI
 
 There are several command line interface (CLI) projects for interacting with containerd:
@@ -269,7 +294,10 @@ Now that we have an image to base our container off of, we need to generate an O
 containerd provides reasonable defaults for generating OCI runtime specs.
 There is also an `Opt` for modifying the default config based on the image that we pulled.
 
-The container will be based off of the image, use the runtime information in the spec that was just created, and we will allocate a new read-write snapshot so the container can store any persistent information.
+The container will be based off of the image, and we will:
+1. allocate a new read-write snapshot so the container can store any persistent information.
+2. create a new spec for the container.
+
 
 ```go
 	container, err := client.NewContainer(

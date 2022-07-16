@@ -26,6 +26,7 @@ import (
 	"time"
 
 	eventstypes "github.com/containerd/containerd/api/events"
+	"github.com/containerd/containerd/api/runtime/task/v2"
 	"github.com/containerd/containerd/api/types"
 	"github.com/containerd/containerd/errdefs"
 	"github.com/containerd/containerd/events/exchange"
@@ -34,11 +35,10 @@ import (
 	"github.com/containerd/containerd/namespaces"
 	"github.com/containerd/containerd/pkg/timeout"
 	"github.com/containerd/containerd/protobuf"
+	ptypes "github.com/containerd/containerd/protobuf/types"
 	"github.com/containerd/containerd/runtime"
 	client "github.com/containerd/containerd/runtime/v2/shim"
-	"github.com/containerd/containerd/runtime/v2/task"
 	"github.com/containerd/ttrpc"
-	ptypes "github.com/gogo/protobuf/types"
 	"github.com/hashicorp/go-multierror"
 	"github.com/sirupsen/logrus"
 )
@@ -175,14 +175,14 @@ func cleanupAfterDeadShim(ctx context.Context, id, ns string, rt *runtime.TaskLi
 		ID:          id,
 		Pid:         pid,
 		ExitStatus:  exitStatus,
-		ExitedAt:    exitedAt,
+		ExitedAt:    protobuf.ToTimestamp(exitedAt),
 	})
 
 	events.Publish(ctx, runtime.TaskDeleteEventTopic, &eventstypes.TaskDelete{
 		ContainerID: id,
 		Pid:         pid,
 		ExitStatus:  exitStatus,
-		ExitedAt:    exitedAt,
+		ExitedAt:    protobuf.ToTimestamp(exitedAt),
 	})
 }
 
@@ -194,6 +194,10 @@ type ShimProcess interface {
 	ID() string
 	// Namespace of this shim.
 	Namespace() string
+	// Bundle is a file system path to shim's bundle.
+	Bundle() string
+	// Client returns the underlying TTRPC client for this shim.
+	Client() *ttrpc.Client
 }
 
 type shim struct {
@@ -208,6 +212,10 @@ func (s *shim) ID() string {
 
 func (s *shim) Namespace() string {
 	return s.bundle.Namespace
+}
+
+func (s *shim) Bundle() string {
+	return s.bundle.Path
 }
 
 func (s *shim) Close() error {
@@ -243,6 +251,10 @@ type shimTask struct {
 	task task.TaskService
 }
 
+func (s *shimTask) Client() *ttrpc.Client {
+	return s.client
+}
+
 func (s *shimTask) Shutdown(ctx context.Context) error {
 	_, err := s.task.Shutdown(ctx, &task.ShutdownRequest{
 		ID: s.ID(),
@@ -271,7 +283,7 @@ func (s *shimTask) PID(ctx context.Context) (uint32, error) {
 	return response.TaskPid, nil
 }
 
-func (s *shimTask) delete(ctx context.Context, removeTask func(ctx context.Context, id string)) (*runtime.Exit, error) {
+func (s *shimTask) delete(ctx context.Context, sandboxed bool, removeTask func(ctx context.Context, id string)) (*runtime.Exit, error) {
 	response, shimErr := s.task.Delete(ctx, &task.DeleteRequest{
 		ID: s.ID(),
 	})
@@ -299,8 +311,12 @@ func (s *shimTask) delete(ctx context.Context, removeTask func(ctx context.Conte
 		removeTask(ctx, s.ID())
 	}
 
-	if err := s.waitShutdown(ctx); err != nil {
-		log.G(ctx).WithField("id", s.ID()).WithError(err).Error("failed to shutdown shim task")
+	// Don't shutdown sandbox as there may be other containers running.
+	// Let controller decide when to shutdown.
+	if !sandboxed {
+		if err := s.waitShutdown(ctx); err != nil {
+			log.G(ctx).WithField("id", s.ID()).WithError(err).Error("failed to shutdown shim task")
+		}
 	}
 
 	if err := s.shim.delete(ctx); err != nil {
@@ -317,7 +333,7 @@ func (s *shimTask) delete(ctx context.Context, removeTask func(ctx context.Conte
 
 	return &runtime.Exit{
 		Status:    response.ExitStatus,
-		Timestamp: response.ExitedAt,
+		Timestamp: protobuf.FromTimestamp(response.ExitedAt),
 		Pid:       response.Pid,
 	}, nil
 }
@@ -467,7 +483,7 @@ func (s *shimTask) Wait(ctx context.Context) (*runtime.Exit, error) {
 	}
 	return &runtime.Exit{
 		Pid:       taskPid,
-		Timestamp: response.ExitedAt,
+		Timestamp: protobuf.FromTimestamp(response.ExitedAt),
 		Status:    response.ExitStatus,
 	}, nil
 }
@@ -534,6 +550,6 @@ func (s *shimTask) State(ctx context.Context) (runtime.State, error) {
 		Stderr:     response.Stderr,
 		Terminal:   response.Terminal,
 		ExitStatus: response.ExitStatus,
-		ExitedAt:   response.ExitedAt,
+		ExitedAt:   protobuf.FromTimestamp(response.ExitedAt),
 	}, nil
 }
