@@ -1,3 +1,4 @@
+//go:build windows
 // +build windows
 
 package winio
@@ -10,6 +11,7 @@ import (
 	"net"
 	"os"
 	"runtime"
+	"strconv"
 	"syscall"
 	"time"
 	"unsafe"
@@ -190,6 +192,7 @@ func tryDialPipe(ctx context.Context, path *string, access uint32) (syscall.Hand
 			return syscall.Handle(0), ctx.Err()
 		default:
 			h, err := createFile(*path, access, 0, nil, syscall.OPEN_EXISTING, syscall.FILE_FLAG_OVERLAPPED|cSECURITY_SQOS_PRESENT|cSECURITY_ANONYMOUS, 0)
+			fmt.Print("\ncreating file for " + *path + "handle is " + strconv.Itoa(int(h)))
 			if err == nil {
 				return h, nil
 			}

@@ -4,9 +4,12 @@
 package winio
 
 import (
+	"bytes"
 	"errors"
+	"fmt"
 	"io"
 	"runtime"
+	"strconv"
 	"sync"
 	"sync/atomic"
 	"syscall"
@@ -170,7 +173,9 @@ func ioCompletionProcessor(h syscall.Handle) {
 		var bytes uint32
 		var key uintptr
 		var op *ioOperation
+		fmt.Println("getting queued status")
 		err := getQueuedCompletionStatus(h, &bytes, &key, &op, syscall.INFINITE)
+		fmt.Println("got queued status")
 		if op == nil {
 			panic(err)
 		}
@@ -264,9 +269,13 @@ func (f *win32File) Write(b []byte) (int, error) {
 		return 0, ErrTimeout
 	}
 
-	var bytes uint32
-	err = syscall.WriteFile(f.handle, b, &bytes, &c.o)
-	n, err := f.asyncIo(c, &f.writeDeadline, bytes, err)
+	var bytes2 uint32
+	fmt.Print("\nwriting for " + strconv.Itoa(int(f.handle)))
+	str1 := bytes.NewBuffer(b).String()
+	fmt.Println("String =", str1)
+	fmt.Print("\r\n")
+	err = syscall.WriteFile(f.handle, b, &bytes2, &c.o)
+	n, err := f.asyncIo(c, &f.writeDeadline, bytes2, err)
 	runtime.KeepAlive(b)
 	return n, err
 }
