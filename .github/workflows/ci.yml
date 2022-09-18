@@ -9,6 +9,11 @@ on:
       - main
       - 'release/**'
 
+env:
+  # Go version we currently use to build containerd across all CI.
+  # Note: don't forget to update `Binaries` step, as it contains the matrix of all supported Go versions.
+  GO_VERSION: '1.19.1'
+
 jobs:
   #
   # golangci-lint
@@ -20,20 +25,19 @@ jobs:
 
     strategy:
       matrix:
-        go-version: [1.18.4]
-        os: [ubuntu-18.04, macos-10.15, windows-2019]
+        os: [ubuntu-18.04, macos-12, windows-2019]
 
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: ${{ matrix.go-version }}
+          go-version: ${{ env.GO_VERSION }}
 
       - uses: actions/checkout@v2
       - uses: golangci/golangci-lint-action@v3
         with:
-          version: v1.45.0
+          version: v1.48.0
           skip-cache: true
-          args: --timeout=5m
+          args: --timeout=8m
 
   #
   # Project checks
@@ -46,7 +50,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.18.4'
+          go-version: ${{ env.GO_VERSION }}
 
       - uses: actions/checkout@v2
         with:
@@ -78,7 +82,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.18.4'
+          go-version: ${{ env.GO_VERSION }}
 
       - uses: actions/checkout@v2
         with:
@@ -110,7 +114,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.18.4'
+          go-version: ${{ env.GO_VERSION }}
       - uses: actions/checkout@v2
       - run: go install github.com/cpuguy83/go-md2man/v2@v2.0.1
       - run: make man
@@ -148,7 +152,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.18.4'
+          go-version: ${{ env.GO_VERSION }}
       - uses: actions/checkout@v2
       - run: |
           set -e -x
@@ -214,8 +218,8 @@ jobs:
 
     strategy:
       matrix:
-        os: [ubuntu-18.04, macos-10.15, windows-2019, windows-2022]
-        go-version: ['1.17.12', '1.18.4']
+        os: [ubuntu-18.04, macos-12, windows-2019, windows-2022]
+        go-version: ['1.19.1', '1.18.6']
     steps:
       - uses: actions/setup-go@v2
         with:
@@ -262,7 +266,7 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.18.4'
+          go-version: ${{ env.GO_VERSION }}
 
       - uses: actions/checkout@v2
         with:
@@ -282,14 +286,6 @@ jobs:
 
       - run: script/setup/install-dev-tools
 
-      # There is currently an issue in the race detector in Go on Windows when
-      # used with a newer version of GCC. The issue was first reported here:
-      # https://github.com/golang/go/issues/46099
-      - name: Downgrade MinGW
-        shell: bash
-        run: |
-          choco install mingw --version 10.2.0 --allow-downgrade
-
       - name: Binaries
         env:
           CGO_ENABLED: 1
@@ -304,9 +300,9 @@ jobs:
       - env:
           TEST_IMAGE_LIST: ${{github.workspace}}/repolist.toml
           CRI_TEST_IMAGES: ${{github.workspace}}/cri-test-images.yaml
-          BUSYBOX_TESTING_IMAGE_REF: "k8s.gcr.io/e2e-test-images/busybox:1.29-2"
-          RESOURCE_CONSUMER_TESTING_IMAGE_REF: "k8s.gcr.io/e2e-test-images/resource-consumer:1.10"
-          WEBSERVER_TESTING_IMAGE_REF: "k8s.gcr.io/e2e-test-images/nginx:1.14-2"
+          BUSYBOX_TESTING_IMAGE_REF: "registry.k8s.io/e2e-test-images/busybox:1.29-2"
+          RESOURCE_CONSUMER_TESTING_IMAGE_REF: "registry.k8s.io/e2e-test-images/resource-consumer:1.10"
+          WEBSERVER_TESTING_IMAGE_REF: "registry.k8s.io/e2e-test-images/nginx:1.14-2"
         run: |
             cat > "${{ env.TEST_IMAGE_LIST }}" << EOF
             busybox = "${{ env.BUSYBOX_TESTING_IMAGE_REF }}"
@@ -404,20 +400,20 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.18.4'
+          go-version: ${{ env.GO_VERSION }}
 
       - uses: actions/checkout@v2
 
       - name: Install containerd dependencies
         env:
           RUNC_FLAVOR: ${{ matrix.runc }}
-          GOFLAGS: -modcacherw
         run: |
           sudo apt-get install -y gperf
-          sudo -E PATH=$PATH script/setup/install-seccomp
-          sudo -E PATH=$PATH script/setup/install-runc
-          sudo -E PATH=$PATH script/setup/install-cni $(grep containernetworking/plugins go.mod | awk '{print $2}')
-          sudo -E PATH=$PATH script/setup/install-critools
+          script/setup/install-seccomp
+          script/setup/install-runc
+          script/setup/install-cni $(grep containernetworking/plugins go.mod | awk '{print $2}')
+          script/setup/install-critools
+          script/setup/install-failpoint-binaries
 
       - name: Install criu
         run: |
@@ -432,10 +428,9 @@ jobs:
           make binaries GO_BUILD_FLAGS="-mod=vendor"
           sudo -E PATH=$PATH make install
 
-      - run: sudo -E PATH=$PATH script/setup/install-gotestsum
+      - run: script/setup/install-gotestsum
       - name: Tests
         env:
-          GOPROXY: direct
           GOTESTSUM_JUNITFILE: ${{github.workspace}}/test-unit-root-junit.xml
         run: |
           make test
@@ -443,7 +438,6 @@ jobs:
 
       - name: Integration 1
         env:
-          GOPROXY: direct
           TEST_RUNTIME: ${{ matrix.runtime }}
           RUNC_FLAVOR: ${{ matrix.runc }}
           ENABLE_CRI_SANDBOXES: ${{ matrix.enable_cri_sandboxes }}
@@ -458,7 +452,6 @@ jobs:
       # Run the integration suite a second time. See discussion in github.com/containerd/containerd/pull/1759
       - name: Integration 2
         env:
-          GOPROXY: direct
           TEST_RUNTIME: ${{ matrix.runtime }}
           RUNC_FLAVOR: ${{ matrix.runc }}
           ENABLE_CRI_SANDBOXES: ${{ matrix.enable_cri_sandboxes }}
@@ -483,6 +476,14 @@ jobs:
           ENABLE_CRI_SANDBOXES: ${{ matrix.enable_cri_sandboxes }}
         run: |
           BDIR="$(mktemp -d -p $PWD)"
+
+          function cleanup() {
+            sudo pkill containerd || true
+            cat ${BDIR}/containerd-cri.log
+            sudo -E rm -rf ${BDIR}
+          }
+          trap cleanup EXIT
+
           mkdir -p ${BDIR}/{root,state}
           cat > ${BDIR}/config.toml <<EOF
             version = 2
@@ -493,11 +494,6 @@ jobs:
           sudo -E PATH=$PATH /usr/local/bin/containerd -a ${BDIR}/c.sock --config ${BDIR}/config.toml --root ${BDIR}/root --state ${BDIR}/state --log-level debug &> ${BDIR}/containerd-cri.log &
           sudo -E PATH=$PATH /usr/local/bin/ctr -a ${BDIR}/c.sock version
           sudo -E PATH=$PATH critest --report-dir "${{github.workspace}}/critestreport" --runtime-endpoint=unix:///${BDIR}/c.sock --parallel=8
-          TEST_RC=$?
-          test $TEST_RC -ne 0 && cat ${BDIR}/containerd-cri.log
-          sudo pkill containerd
-          sudo -E rm -rf ${BDIR}
-          test $TEST_RC -eq 0 || /bin/false
 
       # Log the status of this VM to investigate issues like
       # https://github.com/containerd/containerd/issues/4969
@@ -518,7 +514,7 @@ jobs:
 
   tests-mac-os:
     name: MacOS unit tests
-    runs-on: macos-10.15
+    runs-on: macos-12
     timeout-minutes: 10
     needs: [project, linters, protos, man]
     env:
@@ -527,12 +523,11 @@ jobs:
     steps:
       - uses: actions/setup-go@v2
         with:
-          go-version: '1.18.4'
+          go-version: ${{ env.GO_VERSION }}
       - uses: actions/checkout@v2
-      - run: sudo -E PATH=$PATH script/setup/install-gotestsum
+      - run: script/setup/install-gotestsum
       - name: Tests
         env:
-          GOPROXY: direct
           GOTESTSUM_JUNITFILE: "${{ github.workspace }}/macos-test-junit.xml"
         run: make test
       - uses: actions/upload-artifact@v2

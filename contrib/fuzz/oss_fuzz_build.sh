@@ -40,17 +40,15 @@ compile_fuzzers() {
 
 apt-get update && apt-get install -y wget
 cd $SRC
-wget --quiet https://go.dev/dl/go1.18.4.linux-amd64.tar.gz
+wget --quiet https://go.dev/dl/go1.19.1.linux-amd64.tar.gz
 
 mkdir temp-go
 rm -rf /root/.go/*
-tar -C temp-go/ -xzf go1.18.4.linux-amd64.tar.gz
+tar -C temp-go/ -xzf go1.19.1.linux-amd64.tar.gz
 mv temp-go/go/* /root/.go/
 cd $SRC/containerd
 
 go mod tidy
-rm vendor/github.com/cilium/ebpf/internal/btf/fuzz.go
-rm /root/go/pkg/mod/github.com/cilium/ebpf@v0.7.0/internal/btf/fuzz.go
 
 cd "$(dirname "${BASH_SOURCE[0]}")"
 cd ../../
@@ -59,8 +57,6 @@ rm -r vendor
 
 # Change path of socket since OSS-fuzz does not grant access to /run
 sed -i 's/\/run\/containerd/\/tmp\/containerd/g' $SRC/containerd/defaults/defaults_unix.go
-
-go get github.com/AdamKorcz/go-118-fuzz-build/utils
 
 compile_fuzzers '^func Fuzz.*testing\.F' compile_native_go_fuzzer vendor
 compile_fuzzers '^func Fuzz.*data' compile_go_fuzzer '(vendor|Integ)'
@@ -91,12 +87,5 @@ cd $SRC/containerd/bin && cp * $OUT/containerd-binaries/ && cd -
 sed -i 's/\/run\/containerd-test/\/tmp\/containerd-test/g' $SRC/containerd/integration/client/client_unix_test.go
 
 cd integration/client
-
-# Rename all *_test.go to *_test_fuzz.go to use their declarations:
-for i in $( ls *_test.go ); do mv $i ./${i%.*}_fuzz.go; done
-
-# Remove windows test to avoid double declarations:
-rm ./client_windows_test_fuzz.go
-rm ./helpers_windows_test_fuzz.go
 
 compile_fuzzers '^func FuzzInteg.*data' compile_go_fuzzer vendor

@@ -25,6 +25,7 @@ import (
 
 	"github.com/containerd/containerd"
 	"github.com/containerd/containerd/errdefs"
+	"github.com/containerd/containerd/integration/images"
 	"github.com/containerd/containerd/namespaces"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -33,7 +34,7 @@ import (
 
 // Test to test the CRI plugin should see image pulled into containerd directly.
 func TestContainerdImage(t *testing.T) {
-	var testImage = GetImage(BusyBox)
+	var testImage = images.Get(images.BusyBox)
 	ctx := context.Background()
 
 	t.Logf("make sure the test image doesn't exist in the cri plugin")
@@ -142,6 +143,9 @@ func TestContainerdImage(t *testing.T) {
 		if err != nil {
 			return false, err
 		}
+		if s.Resources == nil || (s.Resources.Linux == nil && s.Resources.Windows == nil) {
+			return false, fmt.Errorf("No Resource field in container status: %+v", s)
+		}
 		return s.GetState() == runtime.ContainerState_CONTAINER_RUNNING, nil
 	}
 	require.NoError(t, Eventually(checkContainer, 100*time.Millisecond, 10*time.Second))
@@ -150,7 +154,7 @@ func TestContainerdImage(t *testing.T) {
 
 // Test image managed by CRI plugin shouldn't be affected by images in other namespaces.
 func TestContainerdImageInOtherNamespaces(t *testing.T) {
-	var testImage = GetImage(BusyBox)
+	var testImage = images.Get(images.BusyBox)
 	ctx := context.Background()
 
 	t.Logf("make sure the test image doesn't exist in the cri plugin")
